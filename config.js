@@ -1,0 +1,1 @@
+window.APP_CONFIG = { supabaseUrl: 'https://cocvtgfmlfpfpsfgyrxw.supabase.co/rest/v1/', supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvY3Z0Z2ZtbGZwZnBzZmd5cnh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM0MDM5MjQsImV4cCI6MjEwODk3OTkyNH0.h5NOET85XkbT0sFptSEz0b5sUOr4XfyB8wf0vPtCA_k' };
