@@ -38,6 +38,7 @@ globalThis.Scheduler=(()=>{
   const e=ctx.employees.find(x=>x.id===a.employee_id);if(!e)return 'Trabajador inexistente';
   const st=Date.parse(a.starts_at),en=Date.parse(a.ends_at),dur=(en-st)/3600000;
   if(!Number.isFinite(st)||!(en>st))return 'Fechas inválidas';
+  if(e.role==='gerente'&&day(a.shift_date)===1&&(tm(st)!=='08:00'||dur!==8))return 'El gerente apertura los lunes de 08:00 a 16:00';
   if(!active(e,a.shift_date,ctx.restrictions))return 'Vacaciones / inactivo';
   if(dur>(e.role==='part_time'?8:12)+.001)return 'Máximo diario';
   if(e.role==='part_time'&&dur<3.5-.001)return 'Mínimo Part Time 3.5 h';
@@ -51,7 +52,7 @@ globalThis.Scheduler=(()=>{
   const total=same.reduce((z,x)=>z+h(x),0)+dur;
   if(total>Number(e.weekly_hours)+.01)return 'Exceso de horas semanales';
   if(new Set([...same,a].map(x=>x.shift_date)).size>Number(e.work_days||6))return 'Exceso de días';
-  if(a.segments){let prev=st,changes=0,last='';for(let s of a.segments){let ss=Date.parse(s.starts_at),ee=Date.parse(s.ends_at);
+  if(a.segments?.length){let prev=st,changes=0,last='';for(let s of a.segments){let ss=Date.parse(s.starts_at),ee=Date.parse(s.ends_at);
    if(ss!==prev||ee>en||ee<=ss||!areas(e).includes(s.area))return 'Segmentos inválidos';
    if(last&&last!==s.area)changes++;last=s.area;prev=ee;}
    if(prev!==en||changes>1)return 'Más de un cambio de área / tramo sin cubrir';
@@ -67,6 +68,7 @@ globalThis.Scheduler=(()=>{
   c.missing=Math.max(0,c.need-c.have);
  }return cells}
  function diagnostics(assignments,ctx,week){let hardIssues=[];for(let i=0;i<assignments.length;i++){let why=hard(assignments[i],assignments.filter((_,j)=>i!==j),ctx);if(why)hardIssues.push(`${assignments[i].shift_date} ${ctx.employees.find(e=>e.id===assignments[i].employee_id)?.full_name}: ${why}`)}
+  for(const e of ctx.employees.filter(e=>e.role==='gerente'&&active(e,week,ctx.restrictions)))if(!assignments.some(a=>a.employee_id===e.id&&a.shift_date===week&&tm(Date.parse(a.starts_at))==='08:00'&&h(a)===8))hardIssues.push(`${e.full_name}: falta apertura del lunes de 08:00 a 16:00`);
   let cells=coverage(assignments,ctx,week),missing=cells.reduce((n,c)=>n+c.missing*.5,0),gaps=[];
   for(let c of cells.filter(x=>x.missing).sort((a,b)=>a.d.localeCompare(b.d)||a.shift.localeCompare(b.shift)||a.area.localeCompare(b.area)||a.t-b.t)){let last=gaps[gaps.length-1];if(last&&last.d===c.d&&last.area===c.area&&last.shift===c.shift&&last.missing===c.missing&&last.end===c.t)last.end+=H;else gaps.push({d:c.d,area:c.area,shift:c.shift,missing:c.missing,start:c.t,end:c.t+H});}
   let hours=[];for(let e of ctx.employees){let vacation=Array.from({length:7},(_,i)=>add(week,i)).filter(d=>active(e,d,ctx.restrictions));if(!vacation.length||e.active===false)continue;
@@ -76,11 +78,11 @@ globalThis.Scheduler=(()=>{
   }
   return {hardIssues,gaps,missingPersonHours:missing,hours,missingContractHours:hours.reduce((n,x)=>n+x.missing,0),status:hardIssues.length?'inviable':missing||hours.length?'condicionado':'valido'};
  }
- function score(assignments,ctx,week){let s=100,manager=ctx.employees.find(e=>e.role==='gerente'),pref=ctx.preference||'ninguna';if(manager&&pref!=='ninguna'){let own=assignments.filter(a=>a.employee_id===manager.id);if(own.length)s-=20*(1-own.filter(a=>a.shift_name===pref).length/own.length)}
-  for(let area of ['gerencial','produccion','servicio']){let es=ctx.employees.filter(e=>areas(e).includes(area));for(let shift of ['Amanecida','Cierre']){let values=es.map(e=>assignments.filter(a=>a.employee_id===e.id&&a.shift_name===shift).length);if(values.length>1){let avg=values.reduce((a,b)=>a+b,0)/values.length;s-=Math.min(shift==='Amanecida'?20:15,values.reduce((a,b)=>a+(b-avg)**2,0)*1.5)}}}
+ function score(assignments,ctx,week,raw=false){let s=100,manager=ctx.employees.find(e=>e.role==='gerente'),pref=ctx.preference||'ninguna';if(manager&&pref!=='ninguna'){let own=assignments.filter(a=>a.employee_id===manager.id);if(own.length)s-=20*(1-own.filter(a=>a.shift_name===pref).length/own.length)}
+  for(let area of ['gerencial','produccion','servicio']){let es=ctx.employees.filter(e=>e.active!==false&&areas(e).includes(area)&&Array.from({length:7},(_,i)=>add(week,i)).some(d=>active(e,d,ctx.restrictions)));for(let shift of ['Amanecida','Apertura','Cierre']){let values=es.map(e=>assignments.filter(a=>a.employee_id===e.id&&a.shift_name===shift).length);if(values.length>1){let avg=values.reduce((a,b)=>a+b,0)/values.length;s-=values.reduce((a,b)=>a+(b-avg)**2,0)*(shift==='Amanecida'?2:shift==='Cierre'?1.5:1)}}}
   for(let e of ctx.employees){let own=assignments.filter(a=>a.employee_id===e.id).sort((a,b)=>a.starts_at.localeCompare(b.starts_at));for(let i=1;i<own.length;i++)if(own[i].shift_name!==own[i-1].shift_name)s-=1;
    for(let i=1;i<own.length;i++)if(own[i-1].shift_name==='Amanecida'&&own[i].shift_name==='Amanecida'&&own[i].shift_date===add(own[i-1].shift_date,1)&&own.some(a=>a.shift_date===add(own[i].shift_date,1)))s-=5;
-  }return Math.max(0,Math.round(s*10)/10)}
+  }return raw?s:Math.round(10000/(200-s)*10)/10}
  // Jornadas ancladas al inicio del turno para personal de 48h.
  // La cobertura es un MÍNIMO: no impide asignaciones adicionales.
  function generate(ctx,week,count=1,onProgress=()=>{}){
@@ -110,6 +112,7 @@ globalThis.Scheduler=(()=>{
     // Siete patrones rotativos de descansos, distribuidos en días diferentes.
     for(let rotation=0;rotation<7;rotation++){
      let daysOff=new Map(managerOrder.map((e,i)=>[e.id,(rotation+i)%7]));
+     if(managerOrder.some(e=>e.role==='gerente'&&daysOff.get(e.id)===0))continue;
      let states=[{plan:[],value:0,counts:{}}];
      for(let di=0;di<7;di++){
       const d=add(week,di),workers=managerOrder.filter(e=>daysOff.get(e.id)!==di&&active(e,d,ctx.restrictions));
@@ -264,6 +267,26 @@ globalThis.Scheduler=(()=>{
      }
      if(!changed)break;
     }
+   }
+   // Intercambios de jornadas: conservan exactamente cobertura, horas y días.
+   // Usar el puntaje sin redondeo evita mesetas artificiales durante la búsqueda.
+   onProgress({stage:'balancing',completed:0,total:1});
+   let currentScore=score(aa,ctx,week,true);
+   for(let pass=0;pass<12;pass++){
+    let best=null,bestScore=currentScore;
+    for(let i=0;i<aa.length;i++)for(let j=i+1;j<aa.length;j++){
+     const a=aa[i],b=aa[j];
+     if(a.employee_id===b.employee_id||a.shift_date!==b.shift_date||a.area!==b.area||a.shift_name===b.shift_name||Math.abs(h(a)-h(b))>.001)continue;
+     if((a.segments?.length||0)>1||(b.segments?.length||0)>1)continue;
+     const x={...b,employee_id:a.employee_id},y={...a,employee_id:b.employee_id};
+     const others=aa.filter((_,k)=>k!==i&&k!==j);
+     if(hard(x,[...others,y],ctx)||hard(y,[...others,x],ctx))continue;
+     const candidate=aa.map((v,k)=>k===i?x:k===j?y:v);
+     const value=score(candidate,ctx,week,true);
+     if(value>bestScore+.000001){best=candidate;bestScore=value;}
+    }
+    if(!best)break;
+    aa=best;currentScore=bestScore;
    }
    let diag=diagnostics(aa,ctx,week),quality=score(aa,ctx,week);
    let signature=aa.map(a=>a.employee_id+'/'+a.starts_at+'/'+a.ends_at+'/'+a.area).sort().join('|');
