@@ -1,1 +1,66 @@
 :root{font-family:Inter,system-ui,Arial,sans-serif;color:#191919;background:#f4f4f5}*{box-sizing:border-box}body{margin:0}header{background:#141414;color:white;padding:18px max(24px,calc((100vw - 1180px)/2));display:flex;gap:24px;align-items:center}header strong{font-size:23px}header span{color:#ef3434}header button{margin-left:auto}main{max-width:1180px;margin:28px auto;padding:0 18px}.narrow{max-width:440px;margin:60px auto}.card{background:white;border:1px solid #e5e5e5;border-radius:14px;padding:24px;margin:16px 0;box-shadow:0 2px 8px #00000007}h1{font-size:30px;margin:0 0 8px}h2{font-size:20px;margin:0 0 15px}p{color:#555;line-height:1.5}.top{display:flex;justify-content:space-between;align-items:center;gap:20px}.top select{max-width:300px}nav{display:flex;gap:8px;flex-wrap:wrap;margin:24px 0}button,.btn{background:#d9272e;color:white;border:0;border-radius:8px;padding:11px 15px;cursor:pointer;font-weight:650;text-decoration:none;display:inline-block;margin:4px 4px 4px 0}button:hover,.btn:hover{filter:brightness(.9)}button.secondary,.btn.secondary{background:#242424}nav button{background:white;color:#333;border:1px solid #ddd}nav button.active{background:#d9272e;color:white}input,select{display:block;border:1px solid #d1d1d1;border-radius:7px;padding:10px;width:100%;min-height:40px;margin:6px 0 12px;background:white}input[type=file]{max-width:440px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;align-items:end}.grid button{min-height:40px}label{display:block;font-size:14px;font-weight:600}table{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0;overflow:auto}th,td{padding:9px;border:1px solid #e3e3e3;text-align:left;vertical-align:middle}th{background:#171717;color:white}td input{min-width:95px;margin:0}td button{padding:6px 9px}#schedule{overflow-x:auto}#schedule table{min-width:950px}#schedule td{cursor:pointer}#schedule td:hover{background:#ffe4e5}.badge{border-radius:20px;background:#f2f2f2;padding:4px 8px}.bad{color:#b00020;font-weight:700}.good{color:#167b36;font-weight:700}#notice{position:fixed;right:20px;bottom:20px;max-width:450px;background:#191919;color:white;padding:13px 18px;border-radius:8px;display:none;white-space:pre-wrap}.shiftline{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px;border-bottom:1px solid #eee}.shiftline input[type=time]{max-width:125px}.shiftline input[type=checkbox]{width:auto}.coverInput{max-width:70px!important}@media print{header,nav,button,input,select,#employees,#rules,#verify,#admin,.card:not(:has(#schedule)),#notice{display:none!important}main{margin:0;padding:0}#schedule{overflow:visible}#schedule table{min-width:0;font-size:10px}}@media(max-width:700px){.top{display:block}header small{display:none}}
+
+/* La regla global button/display no debe anular el atributo hidden */
+[hidden] { display:none !important; }
+nav button[hidden], section[hidden] { display:none !important; }
+nav {align-items:center} .panel {min-width:0} .card {overflow-x:auto}
+#schedule td {min-width:115px} .warning-note {background:#fff5f5;border-left:4px solid #d9272e;padding:12px 16px}
+
+.preview-scroll{overflow:auto;max-height:380px;border:1px solid #ddd;margin:16px 0}#importPreview{margin-top:16px;background:#fff8f8}#importPreview table{min-width:750px}
+[hidden]{display:none!important}.group-title{background:#171717;color:#fff;padding:10px 12px;margin:22px 0 0}.preview-scroll,.scroll{overflow:auto;max-width:100%}table{border-collapse:collapse;width:100%;margin:10px 0}th,td{padding:8px;border:1px solid #ddd;vertical-align:top}th{background:#f4f4f4}input[type=checkbox]{width:auto;display:inline-block}td input[type=checkbox]{width:20px;height:20px}.tag{display:inline-block;border-radius:4px;padding:3px 6px;background:#eee}.warning{background:#fff4db;border-left:4px solid #e39a00;padding:12px}.good{background:#e6f6e9;border-left:4px solid #188038;padding:12px}.badbox{background:#fff0f0;border-left:4px solid #b00020;padding:12px}.small{font-size:12px;color:#555}.cell{font-size:12px;white-space:nowrap}.card h3{margin-top:18px}button{cursor:pointer}input[type=date],input[type=time]{min-width:135px}
+@media print{header,nav,button,form,#login,#generationStatus,#optionSelect,#notice{display:none!important}.card{box-shadow:none!important;border:0!important}main{max-width:100%}table{font-size:10px}}
+button.danger { background:#9d1b1b; color:#fff; border:1px solid #7b1111; }
+button.danger:hover { background:#7b1111; }
+
+.staff-actions{white-space:nowrap;min-width:220px}.staff-actions button{display:inline-block;margin:3px 4px 3px 0;font-size:12px;padding:8px 10px}
+
+/* V5.3: encabezados legibles y edición de áreas */
+.scroll table th, .preview-scroll table th, #meetingsTable th, #replacementsTable th, #restrictionRows th, #diagnostics th, #employeesTable th {background:#eceef1!important;color:#202124!important;font-weight:750;border-color:#d6d8dc!important}
+#schedule table th {background:#eceef1!important;color:#202124!important}
+.group-title{background:#171717!important;color:#fff!important}
+.area-editor{background:#f7f8fa;border:1px solid #d9dde3;border-radius:10px;padding:16px;margin:12px 0 20px}
+.area-editor label{display:inline-flex;align-items:center;gap:8px;margin:8px 20px 8px 0}
+.area-editor input[type=checkbox]{width:18px;height:18px;margin:0}
+.area-editor select{max-width:220px;margin:0}
+#meetingForm{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+
+/* V5.6: progreso visible */
+#generationProgress{display:block;width:100%;height:20px;accent-color:#d9272e;margin:12px 0;border-radius:10px}
+#generationProgress[hidden]{display:none!important}
+#generateBtn:disabled{opacity:.55;cursor:wait}
+
+/* V5.7: horario primero; incidencias opcionales al final */
+.diagnostic-details{margin-top:22px;border:1px solid #ddd;border-radius:10px;padding:14px;background:#fafafa}
+.diagnostic-details summary{font-weight:700;color:#222;cursor:pointer;padding:8px}
+.diagnostic-details[open] summary{margin-bottom:16px}
+
+/* V5.9: barra visible y con contraste */
+#generationProgress:not([hidden]){display:block;width:100%;height:22px;margin:14px 0;accent-color:#d9272e;border-radius:6px}
+#generationStatus{font-weight:600;color:#222;min-height:24px}
+#proposalCard[hidden]{display:none!important}
+
+/* Identificación rápida de turnos gerenciales. */
+.shift-legend{display:flex;flex-wrap:wrap;gap:9px;margin:10px 0}
+.shift-legend span{padding:7px 11px;border-radius:6px;font-weight:650;font-size:12px;color:#242424}
+.legend-night,.shift-night{background:#e9e6fb!important}
+.legend-open,.shift-open{background:#e4f3e8!important}
+.legend-close,.shift-close{background:#fff0d9!important}
+.legend-rest,.shift-rest{background:#f1f2f4!important}
+.shift-exception{background:#fce4e4!important}
+#schedule td.shift-night:hover{background:#dcd5f8!important}
+#schedule td.shift-open:hover{background:#d0ecd9!important}
+#schedule td.shift-close:hover{background:#ffe3ba!important}
+
+/* V5.12: editor gerencial */
+.manager-editor{border:1px solid #d8dde4;border-radius:12px;padding:16px;margin:16px 0;background:#fafbfc}
+.manager-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.manager-toolbar strong{margin-right:auto}
+.manager-editor button{margin:4px}
+.manager-editor label{display:inline-flex;gap:8px;align-items:center;margin:8px}
+.manager-editor select{width:auto;min-width:210px}
+.manager-editable{cursor:pointer;outline-offset:-3px}
+.manager-editable:hover{outline:2px solid #e11d28}
+.manager-cell-selected{outline:3px solid #d51b25!important;outline-offset:-3px}
+.manager-warnings{margin-top:10px;font-size:.92rem;color:#734b12}
+.manager-warning{padding:8px 12px;background:#fff5dd;border-left:4px solid #e4a328;margin:6px 0}
+.manager-locked{color:#12683c}
