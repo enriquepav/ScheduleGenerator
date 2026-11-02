@@ -1,5 +1,5 @@
 /* Worker: no bloquea la pantalla mientras calcula. */
-importScripts('./engine.js');
+importScripts('./engine.js?v=5.15');
 if (!self.Scheduler || typeof self.Scheduler.generate !== 'function') { throw new Error('No se pudo cargar el motor de horarios'); }
 self.onmessage=event=>{
  try{

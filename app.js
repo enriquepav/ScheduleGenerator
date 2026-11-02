@@ -113,10 +113,10 @@ function renderManager(){$('preferredShift').value=preference;$('meetingsTable')
 $('preferenceForm').onsubmit=guard(async()=>{await q(db.from('manager_preferences').upsert({store_id:storeId,preferred_shift:$('preferredShift').value}));await reload();notify('Preferencia guardada')});
 $('meetingForm').onsubmit=guard(async()=>{let m={store_id:storeId,meeting_date:$('meetingDate').value,meeting_start:$('meetingStart').value,meeting_end:$('meetingEnd').value,absence_start:$('meetingStart').value,absence_end:$('meetingEnd').value,notes:$('meetingNotes').value};if(m.meeting_start>=m.meeting_end)throw Error('Horas de reunión inválidas');await q(db.from('manager_meetings').insert(m));$('meetingForm').reset();await reload();notify('Reunión registrada')});
 $('replacementForm').onsubmit=guard(async()=>{let r={store_id:storeId,replacement_date:$('repDate').value,starts_at:$('repStart').value,ends_at:$('repEnd').value,full_name:$('repName').value.trim(),origin_store:$('repOrigin').value.trim()};if(r.starts_at===r.ends_at)throw Error('Horario inválido');await q(db.from('external_replacements').insert(r));$('replacementForm').reset();await reload();notify('Reemplazo registrado')});
-function context(){return {employees,studies,restrictions,shifts,requirements,rules,meetings,replacements,preference}}
+function context(){return {employees,studies,restrictions,shifts,requirements,rules,meetings,replacements,preference,historyAssignments,boundaryAssignments,baselineAssignments,lockedCells:effectiveLocks(),strategy:$('planStrategy').value}}
 function presentDiagnostics(d){let cls=d.status==='valido'?'good':d.status==='condicionado'?'warning':'badbox';$('diagnostics').innerHTML=`<div class="${cls}"><b>Estado: ${d.status.toUpperCase()}</b> · ${d.missingPersonHours.toFixed(1)} horas-persona sin cubrir · ${d.missingContractHours.toFixed(1)} horas contractuales pendientes</div>`+(d.hardIssues.length?`<h3>Infracciones estrictas (${d.hardIssues.length})</h3><ul>${d.hardIssues.map(s=>`<li>${esc(s)}</li>`).join('')}</ul>`:'')+`<h3>Cobertura pendiente: intervalos sin personal suficiente (${d.gaps.length})</h3><div class="scroll"><table><tr><th>Día</th><th>Turno</th><th>Área</th><th>Personal adicional necesario</th><th>Desde</th><th>Hasta</th></tr>${d.gaps.map(g=>`<tr><td>${dayNames[Scheduler.day(g.d)]}</td><td>${esc(g.shift)}</td><td>${esc(g.area)}</td><td>${g.missing}</td><td>${Scheduler.tm(g.start)}</td><td>${Scheduler.tm(g.end)}</td></tr>`).join('')}</table></div><p class="small"><strong>¿Qué significa?</strong> Cada fila indica cuándo no se alcanza el mínimo de trabajadores definido para ese día, turno y área. Por ejemplo, 1 persona faltante durante 30 minutos equivale a 0.5 horas-persona. No es una infracción del trabajador: es una necesidad de cobertura de la tienda.</p><h3>Horas contractuales pendientes</h3><div class="scroll"><table><tr><th>Trabajador</th><th>Asignadas</th><th>Objetivo</th><th>Faltantes</th></tr>${d.hours.map(x=>`<tr><td>${esc(x.name)}</td><td>${x.worked.toFixed(1)}</td><td>${x.target}</td><td>${x.missing.toFixed(1)}</td></tr>`).join('')}</table></div>`}
-function scheduleHtml(assignments,week){let days=Array.from({length:7},(_,i)=>Scheduler.add(week,i)),html='';for(let g=0;g<3;g++){html+=`<h3 class="group-title">${['GERENCIALES','PRODUCCIÓN','SERVICIO'][g]}</h3>${g===0?'<div class="shift-legend"><span class="legend-night">Amanecida · 00:00–08:00</span><span class="legend-open">Apertura · 08:00–16:00</span><span class="legend-close">Cierre · 16:00–00:00</span><span class="legend-rest">DESC · Descanso</span></div><p class="small">Los colores identifican el turno. Las jornadas excepcionales por estudios pueden tener otros horarios. Una celda marcada indica una restricción o incidencia que debe revisarse.</p>':''}<div class="scroll"><table><tr><th>Trabajador</th>${days.map(d=>`<th>${dayNames[Scheduler.day(d)]}</th>`).join('')}<th>Horas</th></tr>`;
- for(let e of sorted(employees.filter(x=>group(x)===g))){let own=assignments.filter(a=>a.employee_id===e.id);html+=`<tr><th>${esc(e.full_name)}<br><small>${esc(e.role)}</small></th>`;for(let d of days){let a=own.find(x=>x.shift_date===d),vac=restrictions.some(r=>r.employee_id===e.id&&r.kind==='vacation'&&r.date_from<=d&&(!r.date_to||r.date_to>=d));let content=vac?'VAC':a?`${Scheduler.tm(Date.parse(a.starts_at))}–${Scheduler.tm(Date.parse(a.ends_at))}<br>${(a.segments||[]).map(s=>`${esc(s.area)} ${Scheduler.tm(Date.parse(s.starts_at))}–${Scheduler.tm(Date.parse(s.ends_at))}`).join('<br>')}`:'DESC';let shiftClass='';if(a){const hh=Scheduler.tm(Date.parse(a.starts_at));shiftClass=hh==='00:00'?'shift-night':hh==='08:00'?'shift-open':hh==='16:00'?'shift-close':'shift-exception';}else if(!a)shiftClass='shift-rest';html+=`<td class="cell ${shiftClass} ${g===0&&managerEditing?'manager-editable':''}" ${g===0?`data-manager-employee="${esc(e.id)}" data-manager-day="${d}"`:``}>${content}</td>`}html+=`<td>${own.reduce((n,a)=>n+Scheduler.h(a),0).toFixed(1)}/${e.weekly_hours}</td></tr>`;}html+='</table></div>'}return html}
+function scheduleHtml(assignments,week){let days=Array.from({length:7},(_,i)=>Scheduler.add(week,i)),html='';for(let g=0;g<3;g++){html+=`<h3 class="group-title">${['GERENCIALES','PRODUCCIÓN','SERVICIO'][g]}</h3>${g===0?'<div class="shift-legend"><span class="legend-night">Amanecida · 00:00–08:00</span><span class="legend-open">Apertura · 08:00–16:00</span><span class="legend-close">Cierre · 16:00–00:00</span><span class="legend-rest">DESC · Descanso</span></div><p class="small">Los colores identifican el turno. Las jornadas excepcionales por estudios pueden tener otros horarios. Una celda marcada indica una restricción o incidencia que debe revisarse.</p>':''}<div class="scroll"><table><tr><th>Trabajador</th>${days.map(d=>`<th>${dayNames[Scheduler.day(d)]}<br><small>${d}</small></th>`).join('')}<th>Horas</th></tr>`;
+ for(let e of sorted(employees.filter(x=>group(x)===g))){let own=assignments.filter(a=>a.employee_id===e.id);html+=`<tr><th>${esc(e.full_name)}<br><small>${esc(({full_time:'Full time',entrenador:'Entrenador',part_time:'Part time',gerente:'Gerente',asistente:'Asistente'})[e.role]||e.role)}</small></th>`;for(let d of days){let a=own.find(x=>x.shift_date===d),vac=restrictions.some(r=>r.employee_id===e.id&&r.kind==='vacation'&&r.date_from<=d&&(!r.date_to||r.date_to>=d));let content=vac?'VAC':a?`${Scheduler.tm(Date.parse(a.starts_at))}–${Scheduler.tm(Date.parse(a.ends_at))}<br>${(a.segments?.length>1?a.segments:[]).map(s=>`${esc(s.area)} ${Scheduler.tm(Date.parse(s.starts_at))}–${Scheduler.tm(Date.parse(s.ends_at))}`).join('<br>')}`:'DESC';let shiftClass='';if(a){const hh=Scheduler.tm(Date.parse(a.starts_at));shiftClass=hh==='00:00'?'shift-night':hh==='08:00'?'shift-open':hh==='16:00'?'shift-close':'shift-exception';}else if(!a)shiftClass='shift-rest';html+=`<td data-weekly-employee="${esc(e.id)}" data-weekly-day="${d}" class="cell ${shiftClass} ${effectiveLocks().some(c=>c.employee_id===e.id&&c.shift_date===d)?'weekly-fixed':''} ${Scheduler.changes(assignments,baselineAssignments,week).some(c=>c.employee_id===e.id&&c.shift_date===d)?'weekly-changed':''} ${g===0&&managerEditing?'manager-editable':''}" ${g===0?`data-manager-employee="${esc(e.id)}" data-manager-day="${d}"`:``}>${content}</td>`}html+=`<td>${own.reduce((n,a)=>n+Scheduler.h(a),0).toFixed(1)}/${e.weekly_hours}</td></tr>`;}html+='</table></div>'}return html}
 
 // Gerenciales V5.12: borrador local, validación completa y confirmación persistida.
 const managerial=e=>['gerente','asistente'].includes(e.role);
@@ -176,7 +176,7 @@ function renderManagerEditor(){
  $('managerLockLabel').textContent=managerConfirmed?'✓ Gerenciales confirmados y bloqueados':'Gerenciales · Sin confirmar';
  $('managerLockLabel').classList.toggle('manager-locked',managerConfirmed);
  $('managerEditBtn').textContent=managerConfirmed?'Desbloquear para editar':'Editar gerenciales';
- $('managerConfirmBtn').disabled=managerConfirmed||managerEditing;
+ $('managerConfirmBtn').disabled=managerConfirmed||managerEditing||!selected.id||workingRows!==null;
  $('managerEditControls').hidden=!managerEditing;
  $('managerEditorHint').textContent=managerEditing?'Selecciona una celda gerencial y cambia su turno; o activa Intercambiar y selecciona dos celdas. Guarda para aplicar.':'El horario gerencial confirmado no se modifica durante la generación de otras áreas.';
  const aa=managerEditing?managerDraft:selected.assignments;
@@ -195,51 +195,54 @@ function renderManagerEditor(){
 }
 function redrawManagerDraft(){$('schedule').innerHTML=scheduleHtml(managerDraft,selected.week);renderManagerEditor()}
 $('managerEditBtn').onclick=guard(async()=>{
+ requireSaved();
  if(!selected)throw Error('No hay horario');
  if(managerConfirmed){if(!confirm('Se desbloqueará el horario gerencial. Debes volver a confirmarlo tras editar. ¿Continuar?'))return;
   await q(db.from('manager_schedule_confirmations').delete().eq('option_id',selected.id));managerConfirmed=false;}
  managerEditing=true;managerDraft=cloneRows(selected.assignments);managerSelectedCells=[];managerSwapMode=false;redrawManagerDraft();
 });
-$('managerCancelEdit').onclick=()=>{managerEditing=false;managerDraft=null;managerSelectedCells=[];$('schedule').innerHTML=scheduleHtml(selected.assignments,selected.week);renderManagerEditor()};
+$('managerCancelEdit').onclick=()=>{managerEditing=false;managerDraft=null;managerSelectedCells=[];drawWeekly()};
 $('managerSwapCell').onclick=()=>{managerSwapMode=true;managerSelectedCells=[];$('managerEditStatus').textContent='Selecciona dos celdas para intercambiar sus turnos.'};
 $('managerApplyCell').onclick=()=>{if(!managerSelectedCells.length)throw Error('Selecciona una celda');const [id,d]=managerSelectedCells[0];replaceManagerCell(managerDraft,id,d,makeManagerAssignment(id,d,$('managerShiftChoice').value));const errs=validateManagerRows(managerDraft,selected.week);$('managerEditStatus').textContent=errs.length?`${errs.length} observaciones: ${errs.slice(0,3).join(' | ')}`:'Cambio válido. Guarda para persistir.';redrawManagerDraft()};
 $('managerSaveDraft').onclick=guard(async()=>{
  if(!selected||!managerEditing)throw Error('No hay edición activa');
  const errors=validateManagerRows(managerDraft,selected.week);if(errors.length)throw Error('No se puede guardar: '+errors.slice(0,5).join(' | '));
- const ids=[...managerIds()];const originals=managerRows(selected.assignments);
- // Reemplazar SOLO jornadas gerenciales; el resto queda intacto.
- // Los registros de segmentos antiguos se borran en cascada.
- if(originals.length)await q(db.from('schedule_assignments').delete().in('id',originals.map(a=>a.id)));
- const payload=managerRows(managerDraft).map(a=>({option_id:selected.id,employee_id:a.employee_id,shift_date:a.shift_date,starts_at:a.starts_at,ends_at:a.ends_at,area:'gerencial'}));
- for(let i=0;i<payload.length;i+=100)await q(db.from('schedule_assignments').insert(payload.slice(i,i+100)));
- managerEditing=false;managerDraft=null;managerSelectedCells=[];
- await selectOption(selected.id);notify('Cambios gerenciales guardados. Falta confirmar para bloquear.');
+ const week=selected.week,rows=managerDraft;
+ const batch=await q(db.from('schedule_batches').insert({store_id:storeId,week_start:week,created_by:user.id}).select('id').single());
+ await persistProposal(rows,week,batch.id);
+ for(const c of manualLocks().filter(c=>employees.some(e=>e.id===c.employee_id&&managerial(e))))setLock(c.employee_id,c.shift_date,rows.find(a=>a.employee_id===c.employee_id&&a.shift_date===c.shift_date)||null);
+ managerEditing=false;managerDraft=null;await loadOptions();notify('Nueva versión gerencial guardada. Confirma para bloquear.');
 });
 $('managerConfirmBtn').onclick=guard(async()=>{
- if(!selected||managerEditing)throw Error('Termina de editar antes de confirmar');
+ requireSaved();if(!selected||managerEditing)throw Error('Termina de editar antes de confirmar');
  const errors=validateManagerRows(selected.assignments,selected.week);if(errors.length)throw Error('No se puede confirmar: '+errors.slice(0,5).join(' | '));
  await q(db.from('manager_schedule_confirmations').upsert({option_id:selected.id,store_id:storeId,week_start:selected.week,confirmed_by:user.id},{onConflict:'option_id'}));
  managerConfirmed=true;renderManagerEditor();notify('Horario gerencial confirmado y bloqueado');
 });
 
 async function loadOptions(){
- // Solo se presenta la propuesta más reciente de la semana elegida.
- // El historial anterior permanece intacto en Supabase.
  const week=$('genWeek').value||monday();
- const batches=await q(db.from('schedule_batches').select('id,week_start').eq('store_id',storeId).eq('week_start',week).order('created_at',{ascending:false}).limit(1));
- const rows=batches.length?await q(db.from('schedule_options').select('*').eq('batch_id',batches[0].id).order('created_at',{ascending:false}).limit(1)):[];
- options=rows.map(o=>({...o,week}));
- $('optionSelect').innerHTML=options.map(o=>`<option value="${o.id}">Horario ${esc(week)} · ${esc(o.status)}</option>`).join('');
- if(options.length){await selectOption(options[0].id);$('proposalCard').hidden=false}
- else{selected=null;$('schedule').innerHTML='';$('diagnostics').innerHTML='';$('proposalCard').hidden=true}
+ await loadPlanningHistory(week);
+ const batches=await q(db.from('schedule_batches').select('id,week_start,created_at').eq('store_id',storeId).eq('week_start',week).order('created_at',{ascending:false}).limit(30));
+ const rows=batches.length?await q(db.from('schedule_options').select('*').in('batch_id',batches.map(b=>b.id)).order('created_at',{ascending:true})):[];
+ options=batches.flatMap((b,bi)=>rows.filter(o=>o.batch_id===b.id).map((o,i)=>({...o,week,version:batches.length-bi,proposal:i+1})));
+ $('optionSelect').innerHTML=options.map(o=>`<option value="${o.id}">Versión ${o.version} · propuesta ${o.proposal} · ${esc(o.status)} · puntaje ${o.score}</option>`).join('');
+ if(options.length){const latest=options.filter(o=>o.batch_id===options[0].batch_id);await selectOption((latest.find(o=>o.status==='approved')||latest[0]).id);$('proposalCard').hidden=false}
+ else{selected=null;workingRows=null;managerConfirmed=false;$('schedule').innerHTML='';$('diagnostics').innerHTML='';$('proposalCard').hidden=true}
+ showAvailability();
 }
-$('genWeek').addEventListener('change',()=>loadOptions().catch(e=>notify('Error: '+e.message)));
-async function selectOption(id){managerEditing=false;managerDraft=null;managerSelectedCells=[];selected=options.find(o=>o.id===id);if(!selected)return;let aa=await q(db.from('schedule_assignments').select('*').eq('option_id',id));let segs=aa.length?await q(db.from('assignment_segments').select('*').in('assignment_id',aa.map(a=>a.id))):[];selected.assignments=aa.map(a=>({...a,shift_name:shifts.find(s=>{let [x,y]=Scheduler.slot(a.shift_date,s);return Date.parse(a.starts_at)>=x&&Date.parse(a.starts_at)<y})?.name||'Turno',segments:segs.filter(s=>s.assignment_id===a.id)}));let diag=Scheduler.diagnostics(selected.assignments,context(),selected.week);$('schedule').innerHTML=scheduleHtml(managerEditing?managerDraft:selected.assignments,selected.week);presentDiagnostics(diag);$('scheduleScore').textContent=`Puntaje de equilibrio: ${Scheduler.score(selected.assignments,context(),selected.week)}/100 · Mayor es mejor. Se priorizan cobertura y horas contractuales.`;await loadManagerConfirmation();renderManagerEditor();$('optionSelect').value=id}
-$('optionSelect').onchange=guard(async()=>selectOption($('optionSelect').value));
+$('genWeek').addEventListener('change',()=>{if(workingRows!==null||managerEditing){$('genWeek').value=selected.week;notify('Guarda o descarta la edición antes de cambiar de semana');return}baselineAssignments=[];loadOptions().catch(e=>notify('Error: '+e.message))});
+async function selectOption(id){
+ managerEditing=false;managerDraft=null;managerSelectedCells=[];selected=options.find(o=>o.id===id);if(!selected)return;
+ selected.assignments=await readAssignments(id);workingRows=null;
+ if(!baselineAssignments.length)baselineAssignments=Planner.clone(selected.assignments);
+ await loadManagerConfirmation();drawWeekly();$('optionSelect').value=id;
+}
+$('optionSelect').onchange=guard(async()=>{if(workingRows!==null||managerEditing){$('optionSelect').value=selected.id;throw Error('Guarda o descarta la edición antes de cambiar de propuesta')}await selectOption($('optionSelect').value)});
 // El cálculo pesado se ejecuta fuera del hilo principal.
 function calculateInWorker(ctx,week,count,status){
  return new Promise((resolve,reject)=>{
-  const worker=new Worker('./scheduler-worker.js');
+  const worker=new Worker('./scheduler-worker.js?v=5.15');
   let finished=false;
   const timer=setTimeout(()=>{if(!finished){worker.terminate();reject(Error('El cálculo excedió 120 segundos. Prueba con una alternativa.'))}},120000);
   const close=()=>{finished=true;clearTimeout(timer);worker.terminate()};
@@ -254,12 +257,12 @@ function calculateInWorker(ctx,week,count,status){
 }
 $('generateBtn').onclick=guard(async()=>{
  let week=$('genWeek').value;
- if(!week||Scheduler.day(week)!==1)throw Error('Elige un lunes');if(managerConfirmed&&selected?.week===week)throw Error('Los gerenciales están confirmados. Para cambiar esta semana, desbloquea el horario antes de generar nuevamente.');
+ if(!week||Scheduler.day(week)!==1)throw Error('Elige un lunes');if(managerEditing)throw Error('Termina de editar gerenciales antes de generar');
  if(!shifts.length||!employees.length)throw Error('Faltan turnos o personal');
  if(requirements.length!==shifts.length*7*2)throw Error('Guarda la cobertura para los siete días y las dos áreas');
- let count=1;
+ let count=Number($('proposalCount').value);await loadPlanningHistory(week);showAvailability();
  const button=$('generateBtn'),bar=$('generationProgress'),status=$('generationStatus');
- button.disabled=true;bar.hidden=false;bar.removeAttribute('value');bar.setAttribute('aria-valuetext','Calculando horario');
+ button.disabled=true;setPlanningBusy(true);bar.hidden=false;bar.removeAttribute('value');bar.setAttribute('aria-valuetext','Calculando horario');
  status.textContent='Optimizando horarios en segundo plano...';
  try{
   const result=await calculateInWorker(context(),week,count,p=>{
@@ -267,35 +270,179 @@ $('generateBtn').onclick=guard(async()=>{
    else{bar.removeAttribute('value');status.textContent='Calculando primero gerenciales y luego cobertura de producción y servicio...'}
   });
   if(!result.length)throw Error('No se encontraron propuestas');
+  if(result.some(o=>o.diagnostics.hardIssues.length))throw Error('No se guardó: '+result[0].diagnostics.hardIssues.slice(0,3).join(' | '));
   bar.value=0;bar.max=result.reduce((n,o)=>n+o.assignments.length,0)||1;
   status.textContent='Guardando horario...';
+  const preserveConfirmation=managerConfirmed;
   const batch=await q(db.from('schedule_batches').insert({store_id:storeId,week_start:week,created_by:user.id}).select('id').single());
-  let saved=0;
-  for(let o of result){
-   const row=await q(db.from('schedule_options').insert({batch_id:batch.id,score:o.score,status:'draft'}).select('id').single());
-   // Un solo INSERT por propuesta en vez de una solicitud por trabajador.
-   const payload=o.assignments.map(a=>({option_id:row.id,employee_id:a.employee_id,shift_date:a.shift_date,starts_at:a.starts_at,ends_at:a.ends_at,area:a.area}));
-   let inserted=[];
-   for(let i=0;i<payload.length;i+=100){
-    const chunk=await q(db.from('schedule_assignments').insert(payload.slice(i,i+100)).select('id,employee_id,shift_date,starts_at,ends_at'));
-    inserted.push(...chunk);
-    saved+=chunk.length;bar.value=saved;
-    status.textContent=`Guardando horarios: ${saved} de ${bar.max}`;
-   }
-   const segmentPayload=[];
-   for(let i=0;i<o.assignments.length;i++){
-    const a=o.assignments[i];
-    const match=inserted.find(x=>x.employee_id===a.employee_id&&x.shift_date===a.shift_date&&x.starts_at===a.starts_at&&x.ends_at===a.ends_at);
-    if(match)for(const seg of a.segments||[])segmentPayload.push({assignment_id:match.id,area:seg.area,starts_at:seg.starts_at,ends_at:seg.ends_at});
-   }
-   for(let i=0;i<segmentPayload.length;i+=100)await q(db.from('assignment_segments').insert(segmentPayload.slice(i,i+100)));
+  for(const o of result){
+   const id=await persistProposal(o.assignments,week,batch.id);
+   if(preserveConfirmation)await confirmCopy(id,week);
+   bar.value+=o.assignments.length;
   }
   status.textContent=`Horario guardado. ${result[0].diagnostics.missingPersonHours} horas-persona sin cubrir y ${result[0].diagnostics.missingContractHours} horas pendientes.`;
   await loadOptions();
- }finally{button.disabled=false;bar.hidden=true}
+ }finally{button.disabled=false;setPlanningBusy(false);bar.hidden=true}
 });
-$('approve').onclick=guard(async()=>{if(!selected)throw Error('Selecciona una propuesta');let d=Scheduler.diagnostics(selected.assignments,context(),selected.week);if(d.status!=='valido')throw Error('No se aprueba como completo: existen déficits o restricciones incumplidas. Se conserva como borrador condicionado.');await q(db.from('schedule_options').update({status:'archived'}).eq('batch_id',selected.batch_id).eq('status','approved'));await q(db.from('schedule_options').update({status:'approved'}).eq('id',selected.id));await loadOptions();notify('Horario aprobado')});
-$('exportExcel').onclick=guard(async()=>{if(!selected)throw Error('Selecciona propuesta');let rows=sorted(employees).map(e=>{let o={Grupo:['Gerenciales','Producción','Servicio'][group(e)],DNI:e.dni,Nombre:e.full_name,Cargo:e.role};for(let i=0;i<7;i++){let d=Scheduler.add(selected.week,i),a=selected.assignments.find(x=>x.employee_id===e.id&&x.shift_date===d);o[dayNames[i+1]]=a?`${Scheduler.tm(Date.parse(a.starts_at))}-${Scheduler.tm(Date.parse(a.ends_at))} ${(a.segments||[]).map(s=>s.area).join('/')}`:'DESC'}o.Horas=selected.assignments.filter(a=>a.employee_id===e.id).reduce((n,a)=>n+Scheduler.h(a),0);return o});let wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Horario');let d=Scheduler.diagnostics(selected.assignments,context(),selected.week);XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(d.gaps.map(g=>({Dia:dayNames[Scheduler.day(g.d)],Turno:g.shift,Area:g.area,Faltan:g.missing,Desde:Scheduler.tm(g.start),Hasta:Scheduler.tm(g.end)}))),'Cobertura faltante');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(d.hours),'Horas faltantes');XLSX.writeFile(wb,`TurnoPro_${selected.week}.xlsx`)});
-$('exportPdf').onclick=()=>window.print();
+$('approve').onclick=guard(async()=>{requireSaved();if(!selected)throw Error('Selecciona una propuesta');let d=Scheduler.diagnostics(selected.assignments,context(),selected.week);if(d.status!=='valido')throw Error('No se aprueba como completo: existen déficits o restricciones incumplidas. Se conserva como borrador condicionado.');await q(db.from('schedule_options').update({status:'archived'}).eq('batch_id',selected.batch_id).eq('status','approved'));await q(db.from('schedule_options').update({status:'approved'}).eq('id',selected.id));await loadOptions();notify('Horario aprobado')});
+$('exportExcel').onclick=guard(async()=>{requireSaved();if(!selected)throw Error('Selecciona propuesta');let rows=sorted(employees).map(e=>{let o={Grupo:['Gerenciales','Producción','Servicio'][group(e)],DNI:e.dni,Nombre:e.full_name,Cargo:e.role};for(let i=0;i<7;i++){let d=Scheduler.add(selected.week,i),a=selected.assignments.find(x=>x.employee_id===e.id&&x.shift_date===d);o[dayNames[i+1]+' '+d]=a?`${Scheduler.tm(Date.parse(a.starts_at))}-${Scheduler.tm(Date.parse(a.ends_at))} ${(a.segments||[]).map(s=>s.area).join('/')}`:'DESC'}o.Horas=selected.assignments.filter(a=>a.employee_id===e.id).reduce((n,a)=>n+Scheduler.h(a),0);return o});let wb=XLSX.utils.book_new();const ws=XLSX.utils.json_to_sheet(rows);ws['!cols']=[{wch:15},{wch:12},{wch:32},{wch:16},...Array.from({length:7},()=>({wch:25})),{wch:10}];XLSX.utils.book_append_sheet(wb,ws,'Horario');const changes=Scheduler.changes(selected.assignments,baselineAssignments,selected.week).map(c=>({Persona:employees.find(e=>e.id===c.employee_id)?.full_name,Fecha:c.shift_date,Antes:cellText(c.before),Ahora:cellText(c.after)}));XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(changes.length?changes:[{Cambios:'Sin cambios sobre la base'}]),'Cambios');let d=Scheduler.diagnostics(selected.assignments,context(),selected.week);XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(d.gaps.map(g=>({Dia:dayNames[Scheduler.day(g.d)],Turno:g.shift,Area:g.area,Faltan:g.missing,Desde:Scheduler.tm(g.start),Hasta:Scheduler.tm(g.end)}))),'Cobertura faltante');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(d.hours),'Horas faltantes');XLSX.writeFile(wb,`TurnoPro_${selected.week}.xlsx`)});
+$('exportPdf').onclick=guard(async()=>{requireSaved();window.print()});
+// Flujo semanal: historial, borradores, fijaciones y versiones.
+let historyAssignments=[],boundaryAssignments=[],baselineAssignments=[],previousAssignments=[],workingRows=null,planningKey='',draftLockSnapshot;
+function beginWeeklyDraft(rows){if(workingRows===null)draftLockSnapshot=localStorage.getItem(lockKey());workingRows=rows;}
+function setPlanningBusy(busy){for(const id of ['store','genWeek','copyPrevious','checkAvailability','proposalCount','planStrategy','optionSelect','applyWeeklyCell','restWeeklyCell','toggleWeeklyLock','clearWeeklyLocks','swapWeekly','saveWeeklyVersion','cancelWeeklyDraft','managerEditBtn','managerConfirmBtn','approve','exportImage','exportExcel','exportPdf'])$(id).disabled=busy;if(!busy){$('store').disabled=!admin();if(selected)syncWeeklyCell();}}
+const weeklyRows=()=>workingRows??selected?.assignments??[];
+const lockKey=()=>`turnopro:fixed:${user?.id}:${storeId}:${$('genWeek').value}`;
+function manualLocks(){try{return JSON.parse(localStorage.getItem(lockKey())||'[]')}catch{return []}}
+function effectiveLocks(){
+ const locks=manualLocks();
+ if(managerConfirmed&&selected?.week===$('genWeek').value)for(const e of employees.filter(managerial))for(let di=0;di<7;di++){
+  const d=Scheduler.add(selected.week,di);const cell={employee_id:e.id,shift_date:d,assignment:selected.assignments.find(a=>a.employee_id===e.id&&a.shift_date===d)||null};
+  const old=locks.findIndex(c=>c.employee_id===e.id&&c.shift_date===d);if(old>=0)locks.splice(old,1);locks.push(cell);
+ }
+ return locks;
+}
+function setLock(id,d,assignment){const locks=manualLocks().filter(c=>c.employee_id!==id||c.shift_date!==d);locks.push({employee_id:id,shift_date:d,assignment:assignment?Planner.clone([assignment])[0]:null});localStorage.setItem(lockKey(),JSON.stringify(locks))}
+function requireSaved(){if(workingRows!==null||!selected?.id||managerEditing)throw Error('Guarda o descarta los cambios antes de aprobar o exportar')}
+function inferAssignment(a){return {...a,shift_name:shifts.find(s=>{const [st,en]=Scheduler.slot(a.shift_date,s);return Date.parse(a.starts_at)>=st&&Date.parse(a.starts_at)<en})?.name||'Turno',segments:a.segments||[]}}
+async function allRows(query){let rows=[];for(let start=0;;start+=500){const page=await q(query().range(start,start+499));rows.push(...page);if(page.length<500)return rows;}}
+async function readAssignments(id){
+ const rows=await allRows(()=>db.from('schedule_assignments').select('*').eq('option_id',id).order('id'));
+ let segments=[];for(let i=0;i<rows.length;i+=100)segments.push(...await allRows(()=>db.from('assignment_segments').select('*').in('assignment_id',rows.slice(i,i+100).map(a=>a.id)).order('id')));
+ return rows.map(a=>inferAssignment({...a,segments:segments.filter(s=>s.assignment_id===a.id)}));
+}
+async function loadPlanningHistory(week){
+ const key=storeId+'|'+week;if(key!==planningKey){baselineAssignments=[];workingRows=null;planningKey=key;}
+ const batches=await allRows(()=>db.from('schedule_batches').select('id,week_start,created_at').eq('store_id',storeId).gte('week_start',Scheduler.add(week,-28)).lte('week_start',Scheduler.add(week,7)).order('created_at',{ascending:false}));
+ let opts=[];for(let i=0;i<batches.length;i+=100)opts.push(...await allRows(()=>db.from('schedule_options').select('*').in('batch_id',batches.slice(i,i+100).map(b=>b.id)).order('created_at',{ascending:false})));
+ const chosen=[];
+ for(const d of [...new Set(batches.map(b=>b.week_start))]){
+  const ids=new Set(batches.filter(b=>b.week_start===d).map(b=>b.id));
+  const latestBatch=batches.find(b=>b.week_start===d)?.id;
+  const approved=opts.filter(o=>ids.has(o.batch_id)&&o.status==='approved').sort((a,b)=>b.created_at.localeCompare(a.created_at));
+  const drafts=opts.filter(o=>o.batch_id===latestBatch&&o.status!=='archived').sort((a,b)=>a.created_at.localeCompare(b.created_at));
+  const candidates=approved.length?approved:drafts;
+  if(candidates[0])chosen.push({week:d,option:candidates[0]});
+ }
+ const loaded=await Promise.all(chosen.map(async c=>({...c,rows:await readAssignments(c.option.id)})));
+ historyAssignments=loaded.filter(c=>c.week<week).flatMap(c=>c.rows);
+ previousAssignments=loaded.find(c=>c.week===Scheduler.add(week,-7))?.rows||[];
+ boundaryAssignments=loaded.filter(c=>c.week!==week).flatMap(c=>c.rows).filter(a=>a.shift_date===Scheduler.add(week,-1)||a.shift_date===Scheduler.add(week,7));
+ if(!baselineAssignments.length){const approved=loaded.find(c=>c.week===week&&c.option.status==='approved');baselineAssignments=approved?Planner.clone(approved.rows):Planner.copyWeek(previousAssignments,Scheduler.add(week,-7),week);}
+ $('historySummary').textContent=`Historial: ${loaded.filter(c=>c.week<week).length} de las últimas 4 semanas disponibles. Se usa una versión por semana, priorizando la aprobada. Se revisa descanso con semanas vecinas guardadas.`;
+}
+function showAvailability(){
+ const warnings=Scheduler.preflight(context(),$('genWeek').value);
+ $('availabilityReport').innerHTML=`<details ${warnings.length?'open':''}><summary>Disponibilidad previa: ${warnings.length} alertas</summary><p class="small">Estimación por turno completo; no garantiza factibilidad conjunta y puede advertir turnos cubiertos entre varios Part time.</p>${warnings.length?'<ul>'+warnings.map(w=>`<li>${esc(w)}</li>`).join('')+'</ul>':'<p>No se detectaron faltantes evidentes por disponibilidad. El cálculo revisará horas, descansos y cobertura por intervalos.</p>'}</details>`;
+}
+function cellText(a){return a?`${Scheduler.tm(Date.parse(a.starts_at))}–${Scheduler.tm(Date.parse(a.ends_at))} · ${a.area}`:'DESC'}
+function drawWeekly(){
+ if(!selected)return;
+ const rows=weeklyRows(),week=selected.week;
+ $('proposalCard').hidden=false;
+ $('scheduleTitle').textContent=`${stores.find(s=>s.id===storeId)?.name||'Tienda'} · ${week} al ${Scheduler.add(week,6)} · ${workingRows!==null?'Cambios sin guardar':selected.status||'Borrador'}`;
+ $('schedule').innerHTML=scheduleHtml(rows,week);
+ const diagnostics=Scheduler.diagnostics(rows,context(),week);presentDiagnostics(diagnostics);
+ $('scheduleScore').textContent=`Equilibrio FT y entrenadores: ${Scheduler.score(rows,context(),week)}/100. Primero cobertura y horas; después rotación e historial. Objetivo orientativo en seis jornadas: 2 amanecidas, 2 aperturas y 2 cierres, según disponibilidad.`;
+ $('scheduleScore').textContent+=` Estado: ${diagnostics.status}. Cobertura pendiente: ${diagnostics.missingPersonHours} horas-persona; contrato pendiente: ${diagnostics.missingContractHours} horas.`;
+ const balance=Scheduler.balance(rows,context(),week);
+ const repeated=balance.reduce((n,r)=>n+r.consecutive,0);if(repeated)$('scheduleScore').textContent+=` Atención: quedan ${repeated} pares de amanecidas consecutivas; revisa disponibilidad, fijaciones y alternativas antes de aprobar.`;
+ $('balanceReport').innerHTML='<p class="small">FT y entrenadores se equilibran juntos por área principal. Los turnos previos ayudan a repartir la carga entre semanas. Las restricciones y fijaciones pueden impedir el reparto ideal.</p><table><tr><th>Persona</th><th>Amanecidas</th><th>Aperturas</th><th>Cierres</th><th>Pares de amanecidas seguidas</th><th>Historial A / Ap / C</th></tr>'+balance.map(r=>`<tr><td>${esc(r.name)}</td>${r.counts.map(n=>`<td>${n}</td>`).join('')}<td class="${r.consecutive?'bad':''}">${r.consecutive}</td><td>${r.historyCounts.join(' / ')}</td></tr>`).join('')+'</table>';
+ const changes=Scheduler.changes(rows,baselineAssignments,week);
+ $('changesReport').innerHTML=baselineAssignments.length?`<p>${changes.length} celdas modificadas sobre la base de trabajo.</p><ul>${changes.map(c=>`<li>${esc(employees.find(e=>e.id===c.employee_id)?.full_name)} · ${c.shift_date}: ${esc(cellText(c.before))} → ${esc(cellText(c.after))}</li>`).join('')}</ul>`:'<p>No hay una semana base disponible para comparar.</p>';
+ const oldPerson=$('editPerson').value,oldDate=$('editDate').value;
+ $('editPerson').innerHTML=sorted(employees.filter(e=>e.active!==false)).map(e=>`<option value="${e.id}">${esc(e.full_name)}</option>`).join('');
+ if(employees.some(e=>e.id===oldPerson))$('editPerson').value=oldPerson;
+ $('editDate').innerHTML=Array.from({length:7},(_,i)=>{const d=Scheduler.add(week,i);return `<option value="${d}">${dayNames[i+1]} ${d}</option>`}).join('');
+ if(oldDate>=week&&oldDate<=Scheduler.add(week,6))$('editDate').value=oldDate;
+ renderManagerEditor();
+ document.querySelectorAll('[data-weekly-employee]').forEach(cell=>cell.addEventListener('click',()=>{if(managerEditing)return;$('editPerson').value=cell.dataset.weeklyEmployee;$('editDate').value=cell.dataset.weeklyDay;syncWeeklyCell();$('weeklyEditor').scrollIntoView({block:'nearest',behavior:'smooth'})}));
+ syncWeeklyCell();
+}
+function syncWeeklyCell(){
+ const e=employees.find(e=>e.id===$('editPerson').value),d=$('editDate').value;if(!e)return;
+ const a=weeklyRows().find(a=>a.employee_id===e.id&&a.shift_date===d);
+ $('editStart').value=a?Scheduler.tm(Date.parse(a.starts_at)):'08:00';$('editLength').value=a?Scheduler.h(a):e.role==='part_time'?4:8;
+ $('editArea').innerHTML=Scheduler.areas(e).map(area=>`<option value="${area}">${area}</option>`).join('');if(a)$('editArea').value=a.area;
+ $('weeklyEditStatus').textContent=`${e.full_name} · ${d} · ${effectiveLocks().some(c=>c.employee_id===e.id&&c.shift_date===d)?'Celda fijada':'Celda libre'} · ${workingRows!==null?'Cambios pendientes de guardar':'Versión guardada'}`;
+ const candidates=[];
+ for(const other of employees.filter(x=>x.id!==e.id&&x.active!==false)){
+  if(effectiveLocks().some(c=>c.employee_id===other.id&&c.shift_date===d))continue;
+  try{Planner.swap(weeklyRows(),e.id,other.id,d,context());candidates.push(other)}catch{}
+ }
+ $('swapPerson').innerHTML=candidates.length?candidates.map(x=>`<option value="${x.id}">${esc(x.full_name)}</option>`).join(''):'<option value="">No hay intercambios válidos para este día</option>';
+ $('swapWeekly').disabled=!candidates.length;
+}
+function checkEditable(id,d){
+ if(managerEditing)throw Error('Termina la edición gerencial antes de ajustar el horario');
+ if(managerConfirmed&&employees.some(e=>e.id===id&&managerial(e)))throw Error('Desbloquea los gerenciales antes de modificarlos');
+ if(!selected||d<selected.week||d>Scheduler.add(selected.week,6))throw Error('Selecciona una semana válida');
+}
+$('editPerson').onchange=syncWeeklyCell;$('editDate').onchange=syncWeeklyCell;
+$('checkAvailability').onclick=guard(async()=>{await loadPlanningHistory($('genWeek').value);showAvailability()});
+$('copyPrevious').onclick=guard(async()=>{
+ if(managerEditing)throw Error('Termina la edición gerencial antes de copiar');
+ const week=$('genWeek').value;if(!week||Scheduler.day(week)!==1)throw Error('Elige un lunes');
+ await loadPlanningHistory(week);if(!previousAssignments.length)throw Error('No hay horario guardado para la semana anterior');
+ const current=effectiveLocks();
+ const copied=Planner.copyWeek(previousAssignments,Scheduler.add(week,-7),week).filter(a=>employees.some(e=>e.id===a.employee_id&&e.active!==false));
+ baselineAssignments=Planner.clone(copied);
+ beginWeeklyDraft(Planner.clone(copied));
+ for(const c of current)workingRows=Planner.replace(workingRows,c.employee_id,c.shift_date,c.assignment);
+ if(!selected)selected={id:null,week,status:'draft',assignments:[]};
+ drawWeekly();notify('Semana copiada como borrador. Revisa las incidencias; fija las jornadas que quieras conservar y completa lo pendiente.');
+});
+$('applyWeeklyCell').onclick=guard(async()=>{
+ const id=$('editPerson').value,d=$('editDate').value;checkEditable(id,d);
+ const emp=employees.find(e=>e.id===id),a=Planner.assignment(emp,d,$('editStart').value,Number($('editLength').value),$('editArea').value,shifts);
+ const next=Planner.replace(weeklyRows(),id,d,a),why=Scheduler.hard(a,next.filter(x=>x!==a),context());if(why)throw Error(why);
+ beginWeeklyDraft(next);setLock(id,d,a);drawWeekly();
+});
+$('restWeeklyCell').onclick=guard(async()=>{const id=$('editPerson').value,d=$('editDate').value;checkEditable(id,d);if(employees.find(e=>e.id===id)?.role==='gerente'&&Scheduler.day(d)===1)throw Error('El gerente apertura el lunes');beginWeeklyDraft(Planner.replace(weeklyRows(),id,d,null));setLock(id,d,null);drawWeekly()});
+$('toggleWeeklyLock').onclick=guard(async()=>{
+ const id=$('editPerson').value,d=$('editDate').value;checkEditable(id,d);
+ const locks=manualLocks();if(locks.some(c=>c.employee_id===id&&c.shift_date===d))localStorage.setItem(lockKey(),JSON.stringify(locks.filter(c=>c.employee_id!==id||c.shift_date!==d)));else setLock(id,d,weeklyRows().find(a=>a.employee_id===id&&a.shift_date===d)||null);drawWeekly();
+});
+$('clearWeeklyLocks').onclick=()=>{localStorage.removeItem(lockKey());drawWeekly()};
+$('swapWeekly').onclick=guard(async()=>{
+ const id=$('editPerson').value,other=$('swapPerson').value,d=$('editDate').value;checkEditable(id,d);checkEditable(other,d);
+ beginWeeklyDraft(Planner.swap(weeklyRows(),id,other,d,context()));for(const emp of [id,other])setLock(emp,d,workingRows.find(a=>a.employee_id===emp&&a.shift_date===d)||null);drawWeekly();
+});
+$('cancelWeeklyDraft').onclick=guard(async()=>{if(workingRows!==null){if(draftLockSnapshot===null)localStorage.removeItem(lockKey());else if(draftLockSnapshot!==undefined)localStorage.setItem(lockKey(),draftLockSnapshot);draftLockSnapshot=undefined;}if(!selected?.id){workingRows=null;selected=null;$('proposalCard').hidden=true;return}workingRows=null;drawWeekly()});
+async function confirmCopy(id,week){await q(db.from('manager_schedule_confirmations').insert({option_id:id,store_id:storeId,week_start:week,confirmed_by:user.id}))}
+async function persistProposal(rows,week,batchId){
+ const diag=Scheduler.diagnostics(rows,context(),week);if(diag.hardIssues.length)throw Error('Corrige antes de guardar: '+diag.hardIssues.slice(0,3).join(' | '));
+ const option=await q(db.from('schedule_options').insert({batch_id:batchId,score:Scheduler.score(rows,context(),week),status:'draft'}).select('id').single());
+ try{
+  let inserted=[];
+  for(let i=0;i<rows.length;i+=100)inserted.push(...await q(db.from('schedule_assignments').insert(rows.slice(i,i+100).map(a=>({option_id:option.id,employee_id:a.employee_id,shift_date:a.shift_date,starts_at:a.starts_at,ends_at:a.ends_at,area:a.area}))).select('id,employee_id,shift_date,starts_at')));
+  const segments=rows.flatMap(a=>{const saved=inserted.find(x=>x.employee_id===a.employee_id&&x.shift_date===a.shift_date&&Date.parse(x.starts_at)===Date.parse(a.starts_at));if(!saved)throw Error('No se encontró una jornada guardada');return (a.segments||[]).map(s=>({assignment_id:saved.id,area:s.area,starts_at:s.starts_at,ends_at:s.ends_at}))});
+  for(let i=0;i<segments.length;i+=100)await q(db.from('assignment_segments').insert(segments.slice(i,i+100)));
+  return option.id;
+ }catch(error){const cleanup=await db.from('schedule_options').delete().eq('id',option.id);if(cleanup.error)notify('No se pudo retirar la versión incompleta: '+cleanup.error.message);throw error;}
+}
+$('saveWeeklyVersion').onclick=guard(async()=>{
+ if(workingRows===null)throw Error('No hay cambios pendientes');
+ const week=selected.week,rows=workingRows,locked=managerConfirmed;
+ const issues=Scheduler.diagnostics(rows,context(),week).hardIssues;if(issues.length)throw Error(issues.slice(0,3).join(' | '));
+ const batch=await q(db.from('schedule_batches').insert({store_id:storeId,week_start:week,created_by:user.id}).select('id').single());
+ const id=await persistProposal(rows,week,batch.id);if(locked)await confirmCopy(id,week);
+ await loadOptions();notify('Nueva versión guardada. Las versiones anteriores se conservan.');
+});
+$('exportImage').onclick=guard(async()=>{
+ requireSaved();
+ const rows=selected.assignments,changedCells=new Set(Scheduler.changes(selected.assignments,baselineAssignments,selected.week).map(a=>a.employee_id+'|'+a.shift_date)),people=sorted(employees.filter(e=>e.active!==false)),width=1800,rowHeight=68,height=180+people.length*rowHeight;
+ const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;const c=canvas.getContext('2d');c.fillStyle='white';c.fillRect(0,0,width,height);
+ c.fillStyle='#191919';c.font='bold 30px Arial';c.fillText(`${stores.find(s=>s.id===storeId)?.name||'Tienda'} · ${selected.week} al ${Scheduler.add(selected.week,6)}`,24,42);
+ c.font='20px Arial';c.fillText(`${selected.status==='approved'?'APROBADO':'BORRADOR'} · A: violeta / Apertura: verde / Cierre: naranja · Cambios: ${Scheduler.changes(rows,baselineAssignments,selected.week).length}`,24,78);
+ const col=190,left=430;c.fillStyle='#eceef1';c.fillRect(20,100,width-40,48);c.fillStyle='#191919';c.font='bold 18px Arial';c.fillText('Persona / área',28,130);
+ for(let di=0;di<7;di++)c.fillText(`${dayNames[di+1]} ${Scheduler.add(selected.week,di).slice(5)}`,left+di*col+8,130);
+ for(const [i,e] of people.entries()){
+  const y=148+i*rowHeight;c.fillStyle=i%2?'#fafafa':'#ffffff';c.fillRect(20,y,left-20,rowHeight);c.fillStyle='#191919';c.font='bold 17px Arial';c.fillText(e.full_name,28,y+26,left-45);c.font='16px Arial';c.fillText(`${e.primary_area||e.area} · ${e.role==='entrenador'?'Entrenador':e.role==='full_time'?'Full time':e.role}`,28,y+50);
+  for(let di=0;di<7;di++){const a=rows.find(a=>a.employee_id===e.id&&a.shift_date===Scheduler.add(selected.week,di));c.fillStyle=a?({Amanecida:'#e9e6fb',Apertura:'#e4f3e8',Cierre:'#fff0d9'}[a.shift_name]||'#fce4e4'):'#f1f2f4';c.fillRect(left+di*col,y,col-2,rowHeight-2);if(changedCells.has(e.id+'|'+Scheduler.add(selected.week,di))){c.fillStyle='#cf2634';c.fillRect(left+di*col,y+rowHeight-5,col-2,3);}c.fillStyle='#191919';c.font='18px Arial';const vacation=restrictions.some(r=>r.employee_id===e.id&&r.kind==='vacation'&&r.date_from<=Scheduler.add(selected.week,di)&&(!r.date_to||r.date_to>=Scheduler.add(selected.week,di)));c.fillText(a?`${Scheduler.tm(Date.parse(a.starts_at))}–${Scheduler.tm(Date.parse(a.ends_at))}`:vacation?'VAC':'DESC',left+di*col+10,y+30);if(a){c.font='13px Arial';c.fillText((a.segments?.length>1?a.segments.map(s=>`${s.area} ${Scheduler.tm(Date.parse(s.starts_at))}`).join(' / '):a.area),left+di*col+10,y+52,col-18);}}
+ }
+ const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));if(!blob)throw Error('No se pudo crear la imagen');const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`Horario_${selected.week}.png`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
+
 boot().catch(e=>notify(e.message));
 })();
